@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌷 Tulipanes para ti ti ti</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/brython@3.12.0/brython.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/brython@3.12.0/brython_stdlib.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:'Outfit',sans-serif;
+    background:linear-gradient(135deg,#0c0c0c,#1a1a2e,#16213e);
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    color:white;
+}
+.container{
+    margin-top:30px;
+    background:rgba(255,255,255,0.05);
+    backdrop-filter:blur(20px);
+    border-radius:25px;
+    padding:25px;
+    width:95%;
+    max-width:900px;
+    box-shadow:0 0 30px rgba(0,0,0,.4);
+}
+h1{text-align:center;margin-bottom:20px;text-shadow:0 0 15px hotpink;}
+.controls{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;margin-bottom:15px;}
+.btn{
+    border:none;border-radius:30px;padding:12px 22px;
+    font-weight:bold;cursor:pointer;color:white;
+}
+.btn-primary{background:linear-gradient(45deg,#ff1493,#ff69b4);}
+.btn-secondary{background:linear-gradient(45deg,#8a2be2,#9370db);}
+.btn-reset{background:linear-gradient(45deg,#00ced1,#40e0d0);}
+.speed-control{display:flex;align-items:center;gap:10px;margin:15px 0;}
+.status{text-align:center;margin:10px 0;padding:10px;border-radius:12px;background:rgba(255,255,255,0.05);}
+.status.completed{background:rgba(0,255,127,.15);color:#00ff7f;}
+.canvas-container{background:white;border-radius:15px;padding:10px;}
+canvas{border-radius:10px;}
+</style>
+</head>
+
+<body onload="brython()">
+
+<div class="container">
+<h1>🌷 Tulipanes para ti ti ti</h1>
+
+<div class="controls">
+<button class="btn btn-primary" id="btnDraw">👨‍🎨 Dibujar</button>
+<button class="btn btn-secondary" id="btnPause">⏸️ Pausar</button>
+<button class="btn btn-reset" id="btnReset">🔄 Reiniciar</button>
+</div>
+
+<div class="speed-control">
+<label>Velocidad:</label>
+<input type="range" id="speed" min="1" max="10" value="5">
+<span id="speedValue">5</span>
+</div>
+
+<div class="status" id="status">Cargando datos...</div>
+
+<div class="canvas-container">
+<canvas id="turtleCanvas" width="800" height="600"></canvas>
+</div>
+</div>
+
+<script type="text/python">
+from browser import document, window, ajax
+from browser.timer import set_timeout, clear_timeout
+import json
+
+turtle_data=None
+drawing_active=False
+current_shape=0
+drawing_timeout=None
+turtle_speed=5
+
+canvas=document["turtleCanvas"]
+ctx=canvas.getContext("2d")
+W,H=800,600
+
+turtle_x=W//2
+turtle_y=H//2
+pen=True
+
+def clear_canvas():
+    ctx.clearRect(0,0,W,H)
+    ctx.fillStyle="white"
+    ctx.fillRect(0,0,W,H)
+
+def set_color(r,g,b):
+    ctx.strokeStyle=f"rgb({int(r*255)},{int(g*255)},{int(b*255)})"
+    ctx.fillStyle=f"rgb({int(r*255)},{int(g*255)},{int(b*255)})"
+    ctx.lineWidth=1
+
+def pen_up():
+    global pen
+    pen=False
+
+def pen_down():
+    global pen
+    pen=True
+
+def goto(x,y):
+    global turtle_x,turtle_y
+    sx=W//2+x*0.8
+    sy=H//2+y*0.8
+    if pen:
+        ctx.lineTo(sx,sy)
+    turtle_x, turtle_y = sx, sy
+
+def begin_fill():
+    ctx.beginPath()
+    global first_point
+    first_point=(turtle_x,turtle_y)
+
+def end_fill():
+    ctx.lineTo(first_point[0],first_point[1])
+    ctx.fill()
+
+def load_data():
+    global turtle_data
+    def done(req):
+        global turtle_data
+        if req.status in (200,0):
+            turtle_data=json.loads(req.text)
+            document["status"].textContent="Listo para dibujar 💕"
+        else:
+            document["status"].textContent="Error cargando data.json"
+    r=ajax.ajax()
+    r.bind("complete",done)
+    r.open("GET","./data.json",True)
+    r.send()
+
+def draw_next():
+    global current_shape,drawing_active,drawing_timeout
+    if not drawing_active or not turtle_data:return
+    if current_shape>=len(turtle_data["coordenadas"]):
+        drawing_active=False
+        document["status"].textContent="¡Dibujado! 🌷💕"
+        document["status"].className="status completed"
+        return
+
+    shape=turtle_data["coordenadas"][current_shape]
+    color=turtle_data["color"][current_shape]
+
+    set_color(color[0],color[1],color[2])
+    begin_fill()
+    pen_up()
+    goto(shape[0][0],shape[0][1])
+    pen_down()
+    ctx.moveTo(turtle_x,turtle_y)
+
+    for p in shape[1:]:
+        goto(p[0],p[1])
+
+    end_fill()
+    current_shape+=1
+    delay=max(5,50-turtle_speed*5)
+    drawing_timeout=set_timeout(draw_next,delay)
+
+def start_drawing(ev=None):
+    global drawing_active,current_shape,drawing_timeout
+    if not turtle_data:
+        load_data()
+        return
+    if drawing_timeout: clear_timeout(drawing_timeout)
+    drawing_active=True
+    current_shape=0
+    clear_canvas()
+    draw_next()
+
+def pause_drawing(ev=None):
+    global drawing_active,drawing_timeout
+    drawing_active=False
+    if drawing_timeout: clear_timeout(drawing_timeout)
+    document["status"].textContent="Pausado 💕"
+
+def reset_drawing(ev=None):
+    global drawing_active,current_shape,drawing_timeout
+    drawing_active=False
+    if drawing_timeout: clear_timeout(drawing_timeout)
+    current_shape=0
+    clear_canvas()
+    document["status"].textContent="Listo para dibujar tulipanes 💕"
+
+def update_speed(ev):
+    global turtle_speed
+    turtle_speed=int(document["speed"].value)
+    document["speedValue"].textContent=str(turtle_speed)
+
+document["btnDraw"].bind("click", start_drawing)
+document["btnPause"].bind("click", pause_drawing)
+document["btnReset"].bind("click", reset_drawing)
+document["speed"].bind("input", update_speed)
+
+clear_canvas()
+load_data()
+</script>
+
+</body>
+</html>
